@@ -1,35 +1,51 @@
-const express =  require('express');
-const jwt = require('jsonwebtoken');
+const express = require('express');
 const bodyParser = require('body-parser');
-const justify = require('./justify');
+const application = require('./src/utils').usageManagement;
+const schedule = require('node-schedule');
+const fsExtra = require('fs-extra');
 
-const jwtSecret = process.env.SECRET || 'DoesTheGoldGoblinWorthMoreThanTheCopperDragon';
 const app = express();
-const PORT =  process.env.PORT || 8080;
-
+const PORT = process.env.PORT || 8080;
 
 app.use(bodyParser.json());
 
 app.get('/', (req, res) => {
-    res.send('Welcome Stranger');
+  res.send('Welcome Stranger');
 })
-    .post('/api/token', (req, res) => {
-        const mail = req.body.email;
-        const token = jwt.sign(mail, jwtSecret, {
-          expiresIn: '24h'
-        });
+  .post('/api/token', async (req, res) => {
+    const mail = req.body.email;
+    await application.createToken(mail)
+      .then((data) => {
         res.send({
-          token: token,
+          token: data,
         });
-})
-    .post('/api/justify', (req, res) => {
-      res.setHeader('Content-Type', 'text/plain')
-      res.send(
-        justify.justify(req.body.text, 80));
-      console.log(justify.countWords(req.body.text));
-})
-
-
-.listen(PORT, () => {
-    console.log(`🚀 App running on ${PORT}`);
+      })
+      .catch((e) => {
+        console.error(e);
+      });
+  })
+  .post('/api/justify', async (req, res) => {
+    await application.justifyText(req.headers.authorization, req.body.text)
+      .then((response) => {
+        if (response.statusCode === 200) {
+          res.status(200);
+          res.setHeader('Content-Type', 'text/plain');
+          res.send(response.text);
+        } else {
+          res.status(response.statusCode);
+          res.setHeader('Content-Type', 'application/json');
+          res.send({
+            message: response.message,
+          });
+        }
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+  });
+app.listen(PORT, () => {
+  const s = schedule.scheduleJob('0 0 * * *', () => {
+    fsExtra.emptyDirSync(`${__dirname}/data`);
+  });
+  console.log(`🚀 App running on ${PORT}`);
 });
